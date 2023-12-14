@@ -4,7 +4,7 @@ Lineflow is a tool for making animated single line drawings.
 
 It was built for an MIT museum exhibit.
 
-It's inteded to be used with a pen plotter like the Hack Club Blot
+It's intended to be used with a pen plotter like the Hack Club Blot
 
 # Usage
 
