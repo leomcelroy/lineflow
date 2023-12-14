@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>lineflow</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html, body {
+        background: #393838;
+        font-family: sans-serif;
+      }
+
+      canvas {
+        background: #f0f0f0;
+        border-radius: .6em;
+        border: 1px solid black;
+      }
+
+      button {
+        border-radius: .6em;
+        border: 1px solid black;
+        background: #b7b4b4;
+        cursor: pointer;
+      }
+
+      button:hover {
+        background: lightgrey;
+        color: black;
+      }
+
+      #drawCanvas {
+          border: 1px solid black;
+          cursor: crosshair;
+          width: 650px;
+          height: 650px;
+      }
+
+      .row {
+        display: flex;
+        flex-direction: row;
+        width: 100%;
+      }
+
+      .col {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+      }
+
+      #text-modal {
+        position: absolute;
+        left: 50%;
+        top: 50px;
+        transform: translate(-50%, 0);
+        width: 50%;
+        height: 70%;
+        border: 1px solid black;
+        border-radius: 1em;
+        overflow: scroll;
+      }
+
+      #text-modal textarea {
+        width: 100%;
+        height: 100%;
+        resize: none;
+        padding: 10px;
+        border-radius: 1em;
+      }
+    </style>
+</head>
+<body>
+
+<div class="row" style="width: 100vw; height: 100vh;">
+  <div class="col" style="flex: 1; height: 100%; align-items: center; justify-content: center;">
+    <canvas id="drawCanvas" width="650" height="650"></canvas>
+    <div class="row" style="justify-content: center; padding: .3em .3em;">
+      <button id="clearButton" style="padding: .5em; margin: 1.5em; font-weight: bold;">CLEAR</button>
+      <button id="animate" style="padding: .5em; margin: 1.5em; font-weight: bold;">ANIMATE</button>
+      <button id="open-text-modal" style="padding: .5em; margin: 1.5em; font-weight: bold;">PATHS</button>
+    </div>
+  </div>
+  <div class="col" style="width: 350px;">
+    <div style="color: #e2e1e1; padding-top: 1em; font-size: 1.2em;">ANIMATED</div>
+    <canvas id="animateCanvas" width="300" height="300" style="width: 300px; height: 300px; border: 1px solid black; margin-top: 1em;"></canvas>
+    <div style="color: #e2e1e1; padding-top: 1em; font-size: 1.2em;">FINAL</div>
+    <canvas id="frames" width="300" height="300" style="width: 300px; height: 300px; border: 1px solid black; margin-top: 1em;"></canvas>
+  </div>
+  <dialog id="text-modal">
+    <textarea></textarea>
+  </dialog>
+</div>
+<script>
+const canvas = document.getElementById('drawCanvas');
+const ctx = canvas.getContext('2d');
+const clearButton = document.getElementById('clearButton');
+let isDrawing = false;
+let pls = {};
+let currentPolylineID = "";
+let paths = [];
+let animatePls = [];
+let count = 0;
+
+addCircle(0, 650/2, 15, {
+    fill: "red",
+    tags: ["red-circle-start"]
+})
+addCircle(650, 650/2, 15, {
+    fill: "red",
+    tags: ["red-circle-end"]
+})
+
+canvas.addEventListener('mousedown', (e) => {
+  const [x, y] = [e.offsetX, e.offsetY];
+  if (!isInside(x, y, "red-circle-start")) return;
+    pls = {};
+    isDrawing = true;
+    currentPolylineID = `_${generateRandomString(8)}`;
+    pls[currentPolylineID] = [{
+        x,
+        y
+    }];
+
+    console.log(isInside(x, y, "red-circle"));
+
+
+});
+
+canvas.addEventListener('mousemove', (e) => {
+    if (!isDrawing) return;
+    const [x, y] = [e.offsetX, e.offsetY];
+    pls[currentPolylineID].push({
+        x,
+        y
+    });
+});
+
+canvas.addEventListener('mouseup', finish);
+canvas.addEventListener('mouseout', finish);
+
+function finish(e) {
+    if (!isDrawing) return;
+
+    isDrawing = false
+    const pl = pls[currentPolylineID];
+    pls[currentPolylineID] = quadraticBSpline(douglasPeucker(pl, 1));
+
+    const x = e.offsetX;
+    const y = e.offsetY;
+
+    if (!isInside(x, y, "red-circle-end")) {
+      pls = {};
+    };
+}
+
+clearButton.addEventListener('click', () => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    pls = {}; // Clear the points array
+});
+
+document.querySelector("#open-text-modal").addEventListener("click", () => {
+  document.querySelector("#text-modal").show();
+})
+
+document.body.addEventListener("click", (e) => {
+  if (e.target.matches("#open-text-modal")) return;
+
+  if (!e.target.matches("#text-modal, #text-modal > *")) {
+    document.querySelector("#text-modal").close();
+  }
+})
+
+document.querySelector("#animate").addEventListener("click", () => {
+  const frames = document.getElementById("frames");
+
+  count = 0;
+
+  animatePls = morphPolylines(
+    [{x: 0, y: canvas.height/2}, {x: canvas.width, y: canvas.height/2}],
+    Object.values(pls)[0],
+    100
+  ).map((pl, i, arr) => {
+
+    if ( i === arr.length - 1) return scalePolyline(Object.values(pls)[0], frames.width/canvas.width);
+
+    return scalePolyline(quadraticBSpline(douglasPeucker(pl, 1)), frames.width/canvas.width);
+  });
+
+
+  frames.getContext('2d').clearRect(0, 0, frames.width, frames.height);
+
+
+  let targetPt = { x: 0, y: frames.height/2 };
+
+  const step = Math.floor(animatePls.length/3);
+
+  const finalShapes = [];
+
+  [
+    animatePls[step], 
+    animatePls.at(step*2), 
+    animatePls.at(-1)
+  ].forEach((shot, shotIndex, arr) => {
+    const width = shot.at(-1).x - shot.at(0).x;
+    const scaled = scalePolyline(shot, width/frames.width/arr.length);
+
+    const translated = translate(scaled, targetPt, scaled[0]);
+    finalShapes.push(translated);
+    targetPt.x = translated.at(-1).x;
+
+    const ctx = frames.getContext("2d");
+
+    ctx.beginPath();
+    translated.forEach((pt, i) => {
+        const {
+            x,
+            y
+        } = pt;
+        if (i === 0 && shotIndex === 0) ctx.moveTo(x+10, y);
+        else ctx.lineTo(x+10, y);
+    })
+    ctx.stroke();
+  })
+
+
+  console.log(finalShapes);
+
+  document.querySelector("textarea").value = JSON.stringify(finalShapes);
+
+})
+
+function drawAnimatePls() {
+  const canvas = document.getElementById('animateCanvas');
+  const ctx = canvas.getContext('2d');
+
+  ctx.strokeStyle = "black";
+  ctx.lineWidth = 3;
+
+  setInterval(() => {
+    if (animatePls.length === 0) return;
+    count = count === animatePls.length ? 0 : count;
+    drawPl(animatePls[count], canvas);
+    count++
+  }, 50);
+}
+
+function drawPl(pl, canvas) {
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.beginPath();
+  pl.forEach((pt, i) => {
+      const {
+          x,
+          y
+      } = pt;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+  })
+  ctx.stroke();
+}
+
+drawAnimatePls();
+
+ctx.strokeStyle = "black";
+ctx.lineWidth = 3;
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.beginPath();
+    Object.values(pls).forEach((pl) => {
+
+
+        pl.forEach((pt, i) => {
+            const {
+                x,
+                y
+            } = pt;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        })
+        
+
+    })
+    ctx.stroke();
+
+    paths.forEach(path => {
+      ctx.strokeStyle = path.stroke;
+      ctx.lineWidth = path.lineWidth;
+      ctx.fillStyle = path.fill;
+      if (path.stroke !== "none") ctx.stroke(path.path);
+      if (path.fill !== "none") ctx.fill(path.path);
+    })
+
+    requestAnimationFrame(draw);
+}
+
+draw();
+
+function addCircle(
+    x,
+    y,
+    radius, {
+        stroke = 'none',
+        fill = "none",
+        lineWidth = 0,
+        tags = []
+    } = {}
+) {
+
+    const p = new Path2D();
+    p.arc(x, y, radius, 0, Math.PI * 2, true); // Outer circle
+
+    const circle = { path: p, stroke, fill, lineWidth, tags };
+
+    paths.push(circle);
+}
+
+function scalePolyline(polyline, scale, origin = { x: 0, y: 0 }) {
+    return polyline.map(point => {
+        return {
+            x: origin.x + (point.x - origin.x) * scale,
+            y: origin.y + (point.y - origin.y) * scale
+        };
+    });
+}
+
+function translate(polyline, toPoint , fromPoint) {
+    return polyline.map(point => {
+        let dx = toPoint.x - fromPoint.x;
+        let dy = toPoint.y - fromPoint.y;
+
+        return {
+            x: point.x + dx,
+            y: point.y + dy
+        };
+    });
+}
+
+function isInside(x, y, tag) {
+  return paths.some(path => ctx.isPointInPath(path.path, x, y) && path.tags.includes(tag));
+}
+
+function generateRandomString(length) {
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let result = '';
+    const charactersLength = characters.length;
+
+    for (let i = 0; i < length; i++) {
+        result += characters.charAt(Math.floor(Math.random() * charactersLength));
+    }
+
+    return result;
+}
+
+function catmullRomSpline(points, tension = 0.5) {
+    if (points.length < 3) {
+        throw new Error("Need at least three points to create a spline.");
+    }
+
+    let splinePoints = [];
+
+    for (let i = 0; i < points.length - 1; i++) {
+        const p0 = points[i - 1] || points[i];
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        const p3 = points[i + 2] || p2;
+
+        for (let t = 0; t < 1; t += 0.01) {
+            const t2 = t * t;
+            const t3 = t2 * t;
+
+            const f1 = -tension * t3 + 2 * tension * t2 - tension * t;
+            const f2 = (2 - tension) * t3 + (tension - 3) * t2 + 1;
+            const f3 = (tension - 2) * t3 + (3 - 2 * tension) * t2 + tension * t;
+            const f4 = tension * t3 - tension * t2;
+
+            const x = p0.x * f1 + p1.x * f2 + p2.x * f3 + p3.x * f4;
+            const y = p0.y * f1 + p1.y * f2 + p2.y * f3 + p3.y * f4;
+
+            splinePoints.push({
+                x,
+                y
+            });
+        }
+    }
+
+    return splinePoints;
+}
+
+function quadraticBSpline(points) {
+    if (points.length < 3) {
+        return points;
+    }
+
+    let splinePoints = [];
+
+    // Add the first point
+    splinePoints.push({
+        x: points[0].x,
+        y: points[0].y
+    });
+
+    for (let i = 1; i < points.length - 1; i++) {
+        const p0 = points[i - 1];
+        const p1 = points[i];
+        const p2 = points[i + 1];
+
+        // Calculate mid-points
+        const mid1 = {
+            x: (p0.x + p1.x) / 2,
+            y: (p0.y + p1.y) / 2
+        };
+        const mid2 = {
+            x: (p1.x + p2.x) / 2,
+            y: (p1.y + p2.y) / 2
+        };
+
+        // Quadratic B-spline points
+        for (let t = 0; t <= 1; t += 0.01) {
+            const x = (1 - t) * (1 - t) * mid1.x + 2 * (1 - t) * t * p1.x + t * t * mid2.x;
+            const y = (1 - t) * (1 - t) * mid1.y + 2 * (1 - t) * t * p1.y + t * t * mid2.y;
+            splinePoints.push({
+                x,
+                y
+            });
+        }
+    }
+
+    // Add the last point
+    splinePoints.push({
+        x: points[points.length - 1].x,
+        y: points[points.length - 1].y
+    });
+
+    return splinePoints;
+}
+
+function enhancedBSpline(points, tolerance = 10) {
+    if (points.length < 3) {
+        return points;
+    }
+
+    let splinePoints = [];
+
+    // Function to check if three points are approximately aligned
+    function isLinear(p0, p1, p2, tolerance) {
+        // Calculate the area of the triangle formed by the three points
+        const area = Math.abs(0.5 * (p0.x * (p1.y - p2.y) + p1.x * (p2.y - p0.y) + p2.x * (p0.y - p1.y)));
+        // Calculate the length of the base of the triangle
+        const base = Math.sqrt(Math.pow(p0.x - p2.x, 2) + Math.pow(p0.y - p2.y, 2));
+        // Calculate and return if the height is less than the tolerance
+        return (2 * area / base) < tolerance;
+    }
+
+    for (let i = 1; i < points.length - 1; i++) {
+        const p0 = points[i - 1];
+        const p1 = points[i];
+        const p2 = points[i + 1];
+
+        if (isLinear(p0, p1, p2, tolerance)) {
+            // If the points are linear, push the middle point
+            splinePoints.push({
+                x: p1.x,
+                y: p1.y
+            });
+        } else {
+            // Calculate mid-points for curve
+            const mid1 = {
+                x: (p0.x + p1.x) / 2,
+                y: (p0.y + p1.y) / 2
+            };
+            const mid2 = {
+                x: (p1.x + p2.x) / 2,
+                y: (p1.y + p2.y) / 2
+            };
+
+            // Quadratic B-spline points
+            for (let t = 0; t <= 1; t += 0.01) {
+                const x = (1 - t) * (1 - t) * mid1.x + 2 * (1 - t) * t * p1.x + t * t * mid2.x;
+                const y = (1 - t) * (1 - t) * mid1.y + 2 * (1 - t) * t * p1.y + t * t * mid2.y;
+                splinePoints.push({
+                    x,
+                    y
+                });
+            }
+        }
+    }
+
+    // Ensure the last point is added
+    splinePoints.push({
+        x: points[points.length - 1].x,
+        y: points[points.length - 1].y
+    });
+
+    return splinePoints;
+}
+
+function douglasPeucker(points, epsilon = 1) {
+    // Find the point with the maximum distance from line
+    function findMaxDistance(points, start, end) {
+        let maxDist = 0;
+        let index = 0;
+        const line = [points[start], points[end]];
+
+        for (let i = start + 1; i < end; i++) {
+            const dist = pointLineDistance(points[i], line);
+            if (dist > maxDist) {
+                maxDist = dist;
+                index = i;
+            }
+        }
+
+        return [maxDist, index];
+    }
+
+    // Calculate distance from point to line
+    function pointLineDistance(point, line) {
+        const [p1, p2] = line;
+        const numerator = Math.abs((p2.y - p1.y) * point.x - (p2.x - p1.x) * point.y + p2.x * p1.y - p2.y * p1.x);
+        const denominator = Math.sqrt((p2.y - p1.y) ** 2 + (p2.x - p1.x) ** 2);
+        return numerator / denominator;
+    }
+
+    function rdpRecursive(points, start, end, epsilon) {
+        const [maxDist, index] = findMaxDistance(points, start, end);
+
+        if (maxDist > epsilon) {
+            const res1 = rdpRecursive(points, start, index, epsilon);
+            const res2 = rdpRecursive(points, index, end, epsilon);
+
+            return res1.slice(0, -1).concat(res2);
+        } else {
+            return [points[start], points[end]];
+        }
+    }
+
+    return rdpRecursive(points, 0, points.length - 1, epsilon);
+}
+
+
+function morphPolylines(polyline1, polyline2, steps) {
+    const morphedPolylines = [];
+
+    for (let step = 0; step <= steps; step++) {
+      let intermediatePolyline = [];
+      let t = step / steps;
+
+      for (let i = 0; i <= 1; i += 1/100) {
+          const point1 = interpolatePolyline(polyline1, i);
+          const point2 = interpolatePolyline(polyline2, i);
+
+          // if (i === 0 || i === 1) intermediatePolyline.push(point2);
+
+          intermediatePolyline.push({
+              x: point1.x + (point2.x - point1.x) * t,
+              y: point1.y + (point2.y - point1.y) * t
+          });
+      }
+
+
+      morphedPolylines.push(intermediatePolyline);
+  }
+
+ 
+
+    return morphedPolylines;
+}
+
+
+function interpolatePolyline(polyline, t) {
+    if (t < 0 || t > 1) {
+        throw new Error("t must be between 0 and 1.");
+    }
+
+    // Calculate the total length of the polyline
+    const totalLength = polyline.reduce((acc, point, index) => {
+        if (index === 0) return 0;
+        const dx = point.x - polyline[index - 1].x;
+        const dy = point.y - polyline[index - 1].y;
+        return acc + Math.sqrt(dx * dx + dy * dy);
+    }, 0);
+
+    // Find the segment where the point should lie
+    let accumulatedLength = 0;
+    for (let i = 1; i < polyline.length; i++) {
+        const dx = polyline[i].x - polyline[i - 1].x;
+        const dy = polyline[i].y - polyline[i - 1].y;
+        const segmentLength = Math.sqrt(dx * dx + dy * dy);
+        if (accumulatedLength + segmentLength >= t * totalLength) {
+            // Interpolate the point on this segment
+            const segmentT = (t * totalLength - accumulatedLength) / segmentLength;
+            return {
+                x: polyline[i - 1].x + segmentT * dx,
+                y: polyline[i - 1].y + segmentT * dy
+            };
+        }
+        accumulatedLength += segmentLength;
+    }
+
+    // Return the last point if t is 1
+    return polyline[polyline.length - 1];
+}
+
+</script>
+
+</body>
+</html>
