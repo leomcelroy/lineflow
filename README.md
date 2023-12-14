@@ -25,3 +25,7 @@ Copy the path by clicking the path button to open the text window.
 Paste the path into the blot script given in `examples/blot.js`.
 
 <img width="1426" alt="Screenshot 2023-12-14 at 3 02 02 PM" src="https://github.com/leomcelroy/lineflow/assets/27078897/50e219ef-3cf6-44d2-9ab2-91661ab2d666">
+
+Plot it out.
+
+![PXL_20231214_200707618](https://github.com/leomcelroy/lineflow/assets/27078897/5e3a6cf4-a4bb-4f3e-ae78-fb132a51fe5f)
