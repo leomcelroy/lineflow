@@ -1,5 +1,7 @@
 # Lineflow
 
+![Screen Recording 2023-12-18 at 2 44 30 PM](https://github.com/leomcelroy/lineflow/assets/27078897/0333b4ca-52cd-4bca-9141-44d05d2775ce)
+
 Lineflow is a tool for making animated single line drawings.
 
 It was built for an MIT museum exhibit.
